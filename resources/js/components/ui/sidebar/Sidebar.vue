@@ -17,7 +17,7 @@ const props = withDefaults(
         class?: HTMLAttributes['class'];
     }>(),
     {
-        side: 'left',
+        side: 'right',
         variant: 'sidebar',
         collapsible: 'offcanvas',
     },
