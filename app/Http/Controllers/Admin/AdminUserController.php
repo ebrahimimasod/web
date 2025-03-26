@@ -12,10 +12,30 @@ class AdminUserController extends Controller
 {
     public function index()
     {
-        $users = User::query()->latest()->paginate();
+        $keyword = request('keyword');
+        $searchable = User::searchable;
+
+        $users = User::query()
+            ->where(function ($query) use ($keyword, $searchable) {
+                if ($keyword) {
+                    foreach ($searchable as $column) {
+                        $query->orWhere($column, 'like', "%{$keyword}%");
+                    }
+                }
+            })
+            ->latest()
+            ->paginate();
         $users = AdminUserResource::collection($users);
         return Inertia::render('users/list', [
-            'users' => $users
+            'users' => $users,
+            'keyword' => $keyword
         ]);
+    }
+
+    public function destroy($id)
+    {
+        $user = User::query()->find($id);
+        $user->delete();
+        return back()->with('warning', 'کاربر با موفقیت حذف شد.');
     }
 }

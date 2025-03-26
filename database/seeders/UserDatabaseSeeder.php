@@ -12,8 +12,8 @@ class UserDatabaseSeeder extends Seeder
         User::query()->truncate();
 
         User::query()->create([
-            User::COL_LAST_NAME => "مسود",
-            User::COL_FIRST_NAME => "ابراهیمی",
+            User::COL_FIRST_NAME => "مسعود",
+            User::COL_LAST_NAME => "ابراهیمی",
             User::COL_EMAIL => "ebrahimimasod@gmail.com",
             User::COL_PASSWORD => bcrypt("12345678"),
             User::COL_STATUS => true,
@@ -25,8 +25,8 @@ class UserDatabaseSeeder extends Seeder
 
         for ($i = 0; $i < 100; $i++) {
             User::query()->create([
-                User::COL_LAST_NAME => "کاربر $i",
-                User::COL_FIRST_NAME => "کاربری $i",
+                User::COL_FIRST_NAME => "کاربر$i",
+                User::COL_LAST_NAME => "کاربری $i",
                 User::COL_EMAIL => "masoud$i@gmail.com",
                 User::COL_PASSWORD => null,
                 User::COL_STATUS => true,

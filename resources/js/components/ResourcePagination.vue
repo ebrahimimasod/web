@@ -11,27 +11,27 @@ import {
     PaginationNext,
     PaginationPrev,
 } from '@/components/ui/pagination'
-import {router} from "@inertiajs/vue3";
+import {router, usePage} from "@inertiajs/vue3";
 
 const {meta} = defineProps(['meta']);
 
 
 function handlePageChange(newPage: number) {
-    console.log({newPage})
-    router.get(meta.path, { page: newPage }, { preserveState: true, replace: true })
+    router.get(usePage().url, {page: newPage}, {preserveState: true, replace: true})
 }
 
 
 </script>
 
 <template>
-    <div class="flex items-center justify-center">
+    <div class="flex items-center justify-center" v-if="meta.total">
         <Pagination
             v-slot="{ page }"
             :items-per-page="meta.per_page"
             :total="meta.total"
             :sibling-count="1"
             show-edges
+            :page="meta.current_page"
             :default-page="meta.current_page"
             @update:page="handlePageChange"
         >

@@ -12,8 +12,20 @@ import {
 } from '@/components/ui/sidebar';
 import {type NavItem} from '@/types';
 import {Link} from '@inertiajs/vue3';
-import {Blocks, Headset, Info, LayoutGrid, PanelsTopLeft, RefreshCcw, Settings, Users} from 'lucide-vue-next';
+import {
+    Blocks,
+    BookOpen,
+    Folder,
+    Headset,
+    Info,
+    LayoutGrid,
+    PanelsTopLeft,
+    RefreshCcw,
+    Settings,
+    Users
+} from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
+import NavFooter from "@/components/NavFooter.vue";
 
 const mainNavItems: NavItem[] = [
     {
@@ -49,20 +61,20 @@ const mainNavItems: NavItem[] = [
         icon: Settings,
     },
 
+];
 
+
+const footerNavItems: NavItem[] = [
     {
         title: 'پشتیبانی',
         href: '/support',
         icon: Headset,
     },
-
-
     {
         title: 'درباره سازنده',
         href: '/info',
         icon: Info,
     },
-
 ];
 
 
@@ -87,6 +99,7 @@ const mainNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
+            <NavFooter :items="footerNavItems" />
             <NavUser/>
         </SidebarFooter>
     </Sidebar>

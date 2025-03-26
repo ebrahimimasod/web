@@ -27,6 +27,14 @@ class User extends Authenticatable
     const COL_REMEMBER_TOKEN = 'remember_token';
 
 
+    const  searchable = [
+        self::COL_LAST_NAME,
+        self::COL_FIRST_NAME,
+        self::COL_EMAIL,
+        self::COL_PHONE_NUMBER,
+    ];
+
+
     protected $fillable = [
         self::COL_LAST_NAME,
         self::COL_FIRST_NAME,
