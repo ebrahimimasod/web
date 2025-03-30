@@ -18,6 +18,7 @@ import {
 import {Ellipsis, Eye, Trash, UserPlus, UserRoundPen} from "lucide-vue-next";
 import SearchInput from "@/components/SearchInput.vue";
 import DeleteResource from "@/components/DeleteResource.vue";
+import AppPageTitle from "@/components/AppPageTitle.vue";
 
 
 const deleteUser = reactive({
@@ -57,14 +58,24 @@ function openDialogForDelete(id) {
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
 
-            <div class="w-full flex items-center justify-between">
-                <SearchInput @change="searchUsers" :value="keyword"/>
+            <AppPageTitle
+                icon="users"
+                title="کاربران"
+                subtitle="در این جدول می توانید لیست همه کاربران را ببینید و آنها را مدیریت کنید.">
+                <template #actions>
 
-                <Button variant="outline">
-                    <UserPlus/>
-                    افزودن کاربر جدید
-                </Button>
-            </div>
+                    <div class="flex items-center justify-end">
+                        <SearchInput class="ml-2" @change="searchUsers" :value="keyword"/>
+
+                        <Button variant="outline" @click="router.visit('/users/create')">
+                            <UserPlus/>
+                            افزودن کاربر جدید
+                        </Button>
+
+                    </div>
+
+                </template>
+            </AppPageTitle>
 
             <Table>
                 <TableHeader>
@@ -111,7 +122,7 @@ function openDialogForDelete(id) {
                                         <span class="text-red-500">حذف</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator/>
-                                    <DropdownMenuItem class="cursor-pointer">
+                                    <DropdownMenuItem @click="router.visit(route('admin.users.edit',{id:user.id}))" class="cursor-pointer">
                                         <UserRoundPen/>
                                         <span>ویرایش</span>
                                     </DropdownMenuItem>

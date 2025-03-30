@@ -28,7 +28,7 @@ watch(() => keyword.value, () => {
 </script>
 
 <template>
-    <div class="relative w-full max-w-sm items-center">
+    <div class="relative w-full min-w-[350px] items-center">
         <Input id="search" type="text" v-model="keyword" placeholder="جستجو..." class="pr-10"/>
         <span class="absolute start-0 inset-y-0 flex items-center justify-center px-2">
         <Search class="size-6 text-muted-foreground"/>
