@@ -63,7 +63,7 @@ function onSubmit() {
 
             <div class="grid w-full max-w-sm items-center gap-1.5 mt-6">
                 <div>
-                    <Label for="first_name">نام*</Label>
+                    <Label for="first_name" class="mb-2">نام*</Label>
                     <Input
                         v-model="user.first_name"
                         id="first_name"
@@ -72,7 +72,7 @@ function onSubmit() {
                 </div>
 
                 <div class="mt-4">
-                    <Label for="last_name">نام خانوادگی*</Label>
+                    <Label for="last_name" class="mb-2">نام خانوادگی*</Label>
                     <Input
                         v-model="user.last_name"
                         id="last_name"
@@ -81,7 +81,7 @@ function onSubmit() {
                 </div>
 
                 <div class="mt-4">
-                    <Label for="email">ایمیل*</Label>
+                    <Label for="email" class="mb-2">ایمیل*</Label>
                     <Input
                         v-model="user.email"
                         class="text-left"
@@ -92,7 +92,7 @@ function onSubmit() {
 
 
                 <div class="mt-4">
-                    <Label for="password">رمز عبور</Label>
+                    <Label for="password" class="mb-2">رمز عبور</Label>
                     <Input
                         v-model="user.password"
                         class="text-left"
@@ -103,7 +103,7 @@ function onSubmit() {
 
 
                 <div class="mt-4">
-                    <Label for="phone_number">شماره موبایل</Label>
+                    <Label for="phone_number" class="mb-2">شماره موبایل</Label>
                     <Input
                         v-model="user.phone_number"
                         class="text-left"
@@ -126,8 +126,8 @@ function onSubmit() {
                 </div>
 
                 <div class="mt-4 flex items-center justify-start">
-                    <Switch v-model="user.is_admin" id="status"/>
-                    <Label for="status" class="mr-2">
+                    <Switch v-model="user.is_admin" id="is_admin"/>
+                    <Label for="is_admin" class="mr-2">
                         <span>  به عنوان کاربر ادمین</span>
                     </Label>
                 </div>

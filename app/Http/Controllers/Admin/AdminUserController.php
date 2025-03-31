@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Admin\AdminUserResource;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -125,6 +126,31 @@ class AdminUserController extends Controller
         ]);
     }
 
+    public function show($id)
+    {
+        $user = User::query()->find($id);
+        if (!$user) {
+            return back()->with('error', 'کاربر پیدا نشد.');
+        }
+
+        $user = [
+            User::COL_ID => $user[User::COL_ID],
+            User::COL_LAST_NAME => $user[User::COL_LAST_NAME],
+            User::COL_FIRST_NAME => $user[User::COL_FIRST_NAME],
+            User::COL_EMAIL => $user[User::COL_EMAIL],
+            User::COL_PASSWORD => $user[User::COL_PASSWORD],
+            User::COL_STATUS => (bool)$user[User::COL_STATUS],
+            User::COL_IS_ADMIN => (bool)$user[User::COL_IS_ADMIN],
+            User::COL_PHONE_NUMBER => $user[User::COL_PHONE_NUMBER],
+            Model::CREATED_AT => $user[Model::CREATED_AT],
+            Model::UPDATED_AT => $user[Model::UPDATED_AT],
+        ];
+
+        return Inertia::render('users/show', [
+            'user' => $user
+        ]);
+    }
+
     public function update($id): \Illuminate\Http\RedirectResponse
     {
         $validator = Validator::make(request()->all(), [
@@ -194,6 +220,6 @@ class AdminUserController extends Controller
     {
         $user = User::query()->find($id);
         $user->delete();
-        return back()->with('success', 'کاربر با موفقیت حذف شد.');
+        return redirect()->route('admin.users.list')->with('success', 'کاربر با موفقیت حذف شد.');
     }
 }

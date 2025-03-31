@@ -125,9 +125,9 @@ function openDialogForDelete(id) {
                                     <DropdownMenuItem @click="router.visit(route('admin.users.edit',{id:user.id}))" class="cursor-pointer">
                                         <UserRoundPen/>
                                         <span>ویرایش</span>
-                                    </DropdownMenuItem>
+                                    </DropdownMenuItem >
                                     <DropdownMenuSeparator/>
-                                    <DropdownMenuItem class="cursor-pointer">
+                                    <DropdownMenuItem  @click="router.visit(route('admin.users.show',{id:user.id}))"  class="cursor-pointer">
                                         <Eye/>
                                         <span>نمایش</span>
                                     </DropdownMenuItem>
