@@ -39,8 +39,8 @@ class HandleInertiaRequests extends Middleware
                     'warning' => $request->session()->get('warning'),
                 ];
             },
+            'back_response' => $request->session()->get('back_response'),
             'name' => config('app.name'),
-            'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
                 'user' => $request->user(),
             ],

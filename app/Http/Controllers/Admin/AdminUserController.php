@@ -126,7 +126,7 @@ class AdminUserController extends Controller
         ]);
     }
 
-    public function show($id)
+    public function show($id): \Inertia\Response|\Illuminate\Http\RedirectResponse
     {
         $user = User::query()->find($id);
         if (!$user) {
