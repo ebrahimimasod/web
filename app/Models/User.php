@@ -70,7 +70,7 @@ class User extends Authenticatable
         parent::boot();
 
         static::saving(function ($model) {
-            if ($model->isDirty(self::COL_PASSWORD)) {
+            if ($model->isDirty(self::COL_PASSWORD) && !Hash::isHashed($model[self::COL_PASSWORD])) {
                 $model[self::COL_PASSWORD] = Hash::make($model[self::COL_PASSWORD]);
             }
         });

@@ -54,27 +54,28 @@ function updateToLastVersion() {
             <AppPageTitle
                 icon="refreshCw"
                 title="به‌روز‌رسانی"
-                subtitle="در این صفحه می‌توانید نسخه مختلف نرم‌افزار را ببنید و همچنین به اخرین نسخه به‌روزرسانی کنید">
+                subtitle="در این صفحه می‌توانید نسخه مختلف سایت را ببنید و همچنین به اخرین نسخه به‌روزرسانی کنید">
 
             </AppPageTitle>
 
 
             <div class="mt-4">
                 <Alert class="mb-6" v-if="isUpdated">
-                    <AlertTitle>
-                        تبریک!
-                        نرم‌افزار شما به‌روز است.
+                    <AlertTitle class="flex items-center justify-start">
+                        <Icon name="circleCheck" class="text-green-600 ml-2 size-5 stroke-2"/>
+                        <span>  تبریک!
+                        سایت شما به‌روز است.</span>
                     </AlertTitle>
 
-                    <AlertDescription>
-                        شما از آخرین نسخه نرم افزار استفاده می کنید.
+                    <AlertDescription class="pr-6">
+                        شما از آخرین نسخه سایت استفاده می کنید.
                     </AlertDescription>
                 </Alert>
                 <Alert class="mb-6" v-else variant="warning">
                     <AlertTitle class="flex items-center justify-between">
                         <span>
                            توجه!
-                        نرم‌افزار شما نیاز به به‌روزرسانی دارد.
+                        سایت شما نیاز به به‌روزرسانی دارد.
                         </span>
 
                         <div class="flex items-center justify-end">
@@ -166,7 +167,7 @@ function updateToLastVersion() {
                     </div>
                     <template v-else>
                             <span v-if="checkIsUpdated.isUpdated">
-                                شما در حال استفاده از آخرین نسخه نرم‌افزار هستید.
+                                شما در حال استفاده از آخرین نسخه سایت هستید.
                             </span>
                     </template>
                 </div>

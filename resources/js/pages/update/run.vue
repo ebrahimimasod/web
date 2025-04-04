@@ -2,9 +2,11 @@
 import {defineProps, onMounted, reactive} from "vue";
 import AppLayout from '@/layouts/AppLayout.vue';
 import {type BreadcrumbItem} from '@/types';
-import {Head, useForm} from '@inertiajs/vue3';
+import {Head, router, useForm} from '@inertiajs/vue3';
 import AppPageTitle from "@/components/AppPageTitle.vue";
 import {Progress} from '@/components/ui/progress'
+import {Button} from "@/components/ui/button";
+import Icon from "@/components/Icon.vue";
 
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -24,6 +26,7 @@ const updateProgress = reactive({
     next_step: null,
     percentage: 0,
     message: 'در حال بررسی وضعیت به‌روزرسانی...',
+    isError:false,
 });
 
 function sendUpdateRequest() {
@@ -36,12 +39,15 @@ function sendUpdateRequest() {
 
             onSuccess: (page) => {
                 const {message,step, next_step, success, percentage} = page.props.back_response;
-
-
                 updateProgress.message = message;
                 updateProgress.next_step = next_step;
                 updateProgress.percentage = percentage;
                 updateProgress.step = step;
+
+                if(!success){
+                    updateProgress.isError = true;
+                }
+
 
                 /*
                  message : "در حال پاک سازی فایل های موقت ..."
@@ -50,7 +56,7 @@ function sendUpdateRequest() {
                  */
 
 
-                if (step === 'end') {
+                if (step === 'finished') {
                     window.location.href = route("admin.update.versions")
                     return;
                 }
@@ -60,7 +66,9 @@ function sendUpdateRequest() {
                 }
             },
             onError: (errors) => {
-
+                updateProgress.message = 'خطایی رخ داد. لطفا دوباره تلاش کنید.';
+                updateProgress.isUpdating = false;
+                updateProgress.isError = true;
             }
         });
 }
@@ -81,15 +89,15 @@ onMounted(() => {
             <AppPageTitle
                 icon="refreshCw"
                 title="به‌روز‌رسانی"
-                subtitle="در این صفحه آخرین نسخه نرم‌افزار روی سایت شما نصب خواهد شد.">
+                subtitle="در این صفحه آخرین نسخه سایت روی سایت شما نصب خواهد شد.">
 
             </AppPageTitle>
 
 
             <div class="mt-4">
-                <Progress :model-value="updateProgress.percentage"/>
+                <Progress :is-error="updateProgress.isError"  :model-value="updateProgress.percentage"/>
                 <div class="flex items-center justify-center mt-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                    <svg  v-if="!updateProgress.isError" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
                         <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
                            stroke-width="2">
                             <path stroke-dasharray="16" stroke-dashoffset="16" d="M12 3c4.97 0 9 4.03 9 9">
@@ -103,8 +111,14 @@ onMounted(() => {
                             </path>
                         </g>
                     </svg>
-                    <span class="mx-2 text-sm">{{ updateProgress.message }}</span>
-                    <span class="mr-2 text-sm">{{ updateProgress.percentage }}%</span>
+                    <span class="mx-2 text-sm" :class="updateProgress.isError && 'text-red-500'">{{ updateProgress.message }}</span>
+                    <span class="mr-2 text-sm" v-if="!updateProgress.isError">{{ updateProgress.percentage }}%</span>
+                </div>
+                <div v-if="updateProgress.isError" class="flex items-center justify-center mt-4">
+                    <Button variant="outline" @click="router.visit(route('admin.update.versions'))">
+                        <Icon name="chevronRight" />
+                        بازگشت به صفحه لیست به‌روزرسانی ها
+                    </Button>
                 </div>
             </div>
 
