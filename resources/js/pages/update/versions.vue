@@ -54,7 +54,7 @@ function updateToLastVersion() {
             <AppPageTitle
                 icon="refreshCw"
                 title="به‌روز‌رسانی"
-                subtitle="در این صفحه می‌توانید نسخه مختلف سایت را ببنید و همچنین به اخرین نسخه به‌روزرسانی کنید">
+                subtitle="در این صفحه می‌توانید نسخه‌های مختلف سایت را ببنید و به اخرین نسخه به‌روزرسانی کنید">
 
             </AppPageTitle>
 

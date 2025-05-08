@@ -18,4 +18,9 @@ class Setting extends Model
     public $timestamps = false;
 
 
+   protected $casts =  [
+       self::COL_NAME => 'string',
+       self::COL_VALUE => 'json',
+   ];
+
 }

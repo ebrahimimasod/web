@@ -13,7 +13,7 @@ return new class extends Migration
         Schema::create(Setting::TABLE, function (Blueprint $table) {
             $table->id();
             $table->string(Setting::COL_NAME)->unique();
-            $table->text(Setting::COL_VALUE)->nullable();
+            $table->json(Setting::COL_VALUE)->nullable();
         });
     }
 

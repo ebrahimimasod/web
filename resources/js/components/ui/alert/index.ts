@@ -5,7 +5,7 @@ export { default as AlertDescription } from './AlertDescription.vue'
 export { default as AlertTitle } from './AlertTitle.vue'
 
 export const alertVariants = cva(
-  'relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground',
+  'relative w-full rounded-lg border p-3 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground',
   {
     variants: {
       variant: {
@@ -13,7 +13,7 @@ export const alertVariants = cva(
         destructive:
           'border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive',
         warning:
-          'border-orange-500/50 text-orange-500 dark:border-orange-500 [&>svg]:text-orange-500',
+          'bg-orange-50 border-orange-500/50 text-orange-500 dark:border-orange-500 [&>svg]:text-orange-500',
       },
     },
     defaultVariants: {

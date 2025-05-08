@@ -5,16 +5,20 @@ namespace App\Http\Controllers\Admin;
 
 use App\Facades\Setting;
 use App\Http\Controllers\Controller;
+use App\Services\BackupService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
-use ZipArchive;
 
 
-class UpdateController extends Controller
+class BackupController extends Controller
 {
+
     public array $steps = [
         'start',
         'check_version',
@@ -27,71 +31,91 @@ class UpdateController extends Controller
 
     public function index(): \Inertia\Response
     {
-//        Setting::set('app_version', '1.0.0');
-        //TODO: fetch all version and current version of cms core from my server.
-        $currentVersion = Setting::get('app_version', '1.0.0');
-        $versions = [
-            [
-                'version' => '3.0.0',
-                'title' => 'سریعتر از همیشه',
-                'released_at' => now(),
-                'logs' => [
-                    '<span>تغییر <b class="text-primary">سرعت</b> و <b class="text-primary">امنیت</b> بیشتر پنل ادمین مدیریت محتوا</span>',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                ]
-            ],
-            [
-                'version' => '2.0.0',
-                'title' => 'قدرتمندتر از همیشه',
-                'released_at' => now()->addDays(-15),
-                'logs' => [
-                    '<span>تغییر <b class="text-primary">سرعت</b> و <b class="text-primary">امنیت</b> بیشتر پنل ادمین مدیریت محتوا</span>',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                ]
-            ],
-            [
-                'version' => '1.0.0',
-                'title' => 'اولین نسخه پایدار',
-                'released_at' => now()->addDays(-15),
-                'logs' => [
-                    '<span>تغییر <b class="text-primary">سرعت</b> و <b class="text-primary">امنیت</b> بیشتر پنل ادمین مدیریت محتوا</span>',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                    'رفع باگ های گزارش شده',
-                ]
-            ],
-        ];
-        $isUpdated = $currentVersion == $versions[0]['version'];
+        $backup_file_setting = app('setting')->get('backup_file_setting');
+        $backup_schedule_setting = app('setting')->get('backup_schedule_setting');
+        $backup_storage_setting = app('setting')->get('backup_storage_setting');
+        $files = Storage::disk('local')->files('backups');
 
 
-        return Inertia::render('update/versions', [
-            'versions' => $versions,
-            'currentVersion' => $currentVersion,
-            'isUpdated' => $isUpdated,
+        return Inertia::render('backup/index', [
+            'files' => $files,
+            'backup_file_setting' => $backup_file_setting,
+            'backup_schedule_setting' => $backup_schedule_setting,
+            'backup_storage_setting' => $backup_storage_setting,
         ]);
     }
 
-    public function runUpdate(): \Inertia\Response
+    public function updateScheduleSetting(): RedirectResponse
     {
 
-        $currentVersion = Setting::get('app_version', '1.0.0');
-        $lastVersion = '3.0.0';
+        $validator = Validator::make(request()->all(), [
+            'enabled' => [
+                'required',
+                'boolean',
+            ],
+            'schedule' => [
+                'required',
+                'string',
+                "in:12_hours,daily,weekly,fortnightly,monthly"
+            ],
+        ]);
 
-        return Inertia::render('update/run', [
-            'currentVersion' => $currentVersion,
-            'lastVersion' => $lastVersion,
+        if ($validator->fails()) {
+            return back()->withErrors($validator->errors());
+        }
+
+        $data = $validator->validated();
+
+        app('setting')->set('backup_schedule_setting', $data);
+
+        return redirect()->back()->with('success', 'تنظیمات با موفقیت ذخیره شد');
+    }
+
+    public function updateStorageSetting(): RedirectResponse
+    {
+
+        app('setting')->set('backup_storage_setting', request('connections'));
+
+        return redirect()->back()->with('success', 'تنظیمات با موفقیت ذخیره شد');
+    }
+
+    public function updateFileSetting(): RedirectResponse
+    {
+
+        $validator = Validator::make(request()->all(), [
+            'storage' => [
+                'required',
+                'string',
+                "in:local,google_drive,drop_box,ftp,sftp"
+            ],
+            'type' => [
+                'required',
+                'string',
+                'in:all,files,database'
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return back()->withErrors($validator->errors());
+        }
+
+        $data = $validator->validated();
+
+        app('setting')->set('backup_file_setting', $data);
+        return redirect()->back()->with('success', 'تنظیمات با موفقیت ذخیره شد');
+    }
+
+    public function runBackup(): \Inertia\Response
+    {
+        Setting::set("backup_running", true);
+
+        return Inertia::render('backup/run', [
+            'backup_running' => Setting::get("backup_running", false),
         ]);
 
     }
 
-    public function performUpdateStep(): \Illuminate\Http\RedirectResponse
+    public function performBackupStep(): \Illuminate\Http\RedirectResponse
     {
         $result = [];
 

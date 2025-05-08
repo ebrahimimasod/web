@@ -22,7 +22,8 @@ import {
     PanelsTopLeft,
     RefreshCcw,
     Settings,
-    Users
+    Users,
+    DatabaseBackup,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 import NavFooter from "@/components/NavFooter.vue";
@@ -54,7 +55,11 @@ const mainNavItems: NavItem[] = [
         href: '/pages',
         icon: PanelsTopLeft,
     },
-
+    {
+        title: 'پشتیبان‌گیری',
+        href: '/backup',
+        icon: DatabaseBackup,
+    },
     {
         title: 'تنظیمات',
         href: '/setting',

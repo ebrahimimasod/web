@@ -12,7 +12,7 @@ use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 
-class AdminUserController extends Controller
+class UserController extends Controller
 {
     public function index(): \Inertia\Response
     {
