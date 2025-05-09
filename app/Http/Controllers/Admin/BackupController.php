@@ -288,7 +288,7 @@ class BackupController
     private function stepZippingFiles(): array
     {
         $fileSetting = Setting::get('backup_file_setting', ['storage' => 'local', 'type' => 'all']);
-        $zipName = config("name").'-backup-' . now()->format('Y-m-d_H-i-s') . '.zip';
+        $zipName = config("app.name").'-backup-' . now()->format('Y-m-d_H-i-s') . '.zip';
         $zipPath = $this->getTempPath($zipName);
 
         $zip = new ZipArchive();
@@ -326,7 +326,7 @@ class BackupController
 
                     if ($fileInfo->isFile()) {
                         $localName = substr($filePath, $basePathLen);
-                        $zip->addFile($filePath, 'project/' . $localName);
+                        $zip->addFile($filePath, 'files/' . $localName);
                     }
                 }
             }
