@@ -2,40 +2,41 @@
 
 namespace App\Http\Controllers\Admin;
 
-
 use App\Facades\Setting;
-use App\Http\Controllers\Controller;
-use App\Services\BackupService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
+use Spatie\DbDumper\Databases\MySql;
+use ZipArchive;
 
-
-class BackupController extends Controller
+class BackupController
 {
-
+    /**
+     * ترتیب مراحل اجرای بکاپ
+     */
     public array $steps = [
-        'start',
-        'check_version',
-        'download',
-        'extract',
-        'migrate',
-        'clean',
-        'finished',
+        'start',              // آماده‌سازی و ایجاد فولدر موقت
+        'check_requirements', // بررسی شرایط اجرای بکاپ
+        'dumping_database',   // تهیه dump از دیتابیس
+        'zipping_files',      // فشرده‌سازی فایل‌ها
+        'save_backup',        // ذخیره فایل بکاپ در لوکال / ریموت
+        'clean',              // پاکسازی فایل ها و پوشه‌های موقت
+        'finished',           // اتمام و اعلان به کاربر
     ];
 
+    /* ----------------------------------------------------------------------------------------------
+     |  صفحه فهرست بکاپ‌ها
+     |-----------------------------------------------------------------------------------------------*/
     public function index(): \Inertia\Response
     {
         $backup_file_setting = app('setting')->get('backup_file_setting');
         $backup_schedule_setting = app('setting')->get('backup_schedule_setting');
         $backup_storage_setting = app('setting')->get('backup_storage_setting');
         $files = Storage::disk('local')->files('backups');
-
 
         return Inertia::render('backup/index', [
             'files' => $files,
@@ -45,382 +46,438 @@ class BackupController extends Controller
         ]);
     }
 
+    /* ----------------------------------------------------------------------------------------------
+     |  تنظیمات زمان‌بندی
+     |-----------------------------------------------------------------------------------------------*/
     public function updateScheduleSetting(): RedirectResponse
     {
-
         $validator = Validator::make(request()->all(), [
-            'enabled' => [
-                'required',
-                'boolean',
-            ],
-            'schedule' => [
-                'required',
-                'string',
-                "in:12_hours,daily,weekly,fortnightly,monthly"
-            ],
+            'enabled' => ['required', 'boolean'],
+            'schedule' => ['required', 'string', 'in:12_hours,daily,weekly,fortnightly,monthly'],
         ]);
 
         if ($validator->fails()) {
             return back()->withErrors($validator->errors());
         }
 
-        $data = $validator->validated();
-
-        app('setting')->set('backup_schedule_setting', $data);
+        app('setting')->set('backup_schedule_setting', $validator->validated());
 
         return redirect()->back()->with('success', 'تنظیمات با موفقیت ذخیره شد');
     }
 
+    /* ----------------------------------------------------------------------------------------------
+     |  تنظیمات مقصد ذخیره‌سازی
+     |-----------------------------------------------------------------------------------------------*/
     public function updateStorageSetting(): RedirectResponse
     {
-
         app('setting')->set('backup_storage_setting', request('connections'));
 
         return redirect()->back()->with('success', 'تنظیمات با موفقیت ذخیره شد');
     }
 
+    /* ----------------------------------------------------------------------------------------------
+     |  تنظیمات فایل خروجی
+     |-----------------------------------------------------------------------------------------------*/
     public function updateFileSetting(): RedirectResponse
     {
-
         $validator = Validator::make(request()->all(), [
-            'storage' => [
-                'required',
-                'string',
-                "in:local,google_drive,drop_box,ftp,sftp"
-            ],
-            'type' => [
-                'required',
-                'string',
-                'in:all,files,database'
-            ],
+            'storage' => ['required', 'string', 'in:local,ftp,sftp,s3'],
+            'type' => ['required', 'string', 'in:all,files,database'],
         ]);
 
         if ($validator->fails()) {
             return back()->withErrors($validator->errors());
         }
 
-        $data = $validator->validated();
+        app('setting')->set('backup_file_setting', $validator->validated());
 
-        app('setting')->set('backup_file_setting', $data);
         return redirect()->back()->with('success', 'تنظیمات با موفقیت ذخیره شد');
     }
 
+    /* ----------------------------------------------------------------------------------------------
+     |  صفحه اجرای بکاپ (مشاهده ProgressBar)
+     |-----------------------------------------------------------------------------------------------*/
     public function runBackup(): \Inertia\Response
     {
-        Setting::set("backup_running", true);
-
-        return Inertia::render('backup/run', [
-            'backup_running' => Setting::get("backup_running", false),
-        ]);
-
+        return Inertia::render('backup/run');
     }
 
-    public function performBackupStep(): \Illuminate\Http\RedirectResponse
+    /* ----------------------------------------------------------------------------------------------
+     |  Polling فرانت برای اجرای مرحله بعدی
+     |-----------------------------------------------------------------------------------------------*/
+    public function performBackupStep(): RedirectResponse
     {
         $result = [];
-
         $currentStep = $this->getCurrentStep();
 
         switch ($currentStep) {
-
-            //Start
-            case $this->steps[0]:
+            case 'start':
                 $result = $this->stepStartUpdate();
                 break;
 
-            // check_version
-            case $this->steps[1]:
-
-                $result = $this->stepCheckVersionUpdate();
-
+            case 'check_requirements':
+                $result = $this->stepCheckRequirements();
                 break;
 
-            // download
-            case $this->steps[2]:
-
-                $result = $this->stepDownloadUpdate();
-
+            case 'dumping_database':
+                $result = $this->stepDumpingDatabase();
                 break;
 
-            //extract
-            case $this->steps[3]:
-
-                $result = $this->stepExtractUpdate();
-
+            case 'zipping_files':
+                $result = $this->stepZippingFiles();
                 break;
 
-            //migrate
-            case $this->steps[4]:
-
-                $result = $this->stepMigrateUpdate();
-
+            case 'save_backup':
+                $result = $this->stepSaveBackupFile();
                 break;
 
-            //clean
-            case $this->steps[5]:
-
+            case 'clean':
                 $result = $this->stepCleanUpdate();
-
                 break;
 
-            //finished
-            case $this->steps[6]:
+            case 'finished':
                 $result = $this->stepFinishedUpdate();
-
                 break;
         }
 
-        $result = array_merge($result, ['percentage' => $this->getUpdateProgressBar($currentStep)]);
-        return back()->with('back_response', $result);
+        /* درصد پیشرفت */
+        $result = array_merge($result, ['percentage' => $this->getUpdateProgressBar($result['step'] ?? $currentStep)]);
 
+        return back()->with('back_response', $result);
     }
+
+    /* ==============================================================================================*/
+    /*                                 Helpers                                                       */
+    /* ==============================================================================================*/
 
     private function getCurrentStep(): string
     {
         return Cache::get($this->getCacheKey(), $this->steps[0]);
     }
 
-    private function setCurrentStep($step): void
+    private function setCurrentStep(string $step): void
     {
-        Cache::set($this->getCacheKey(), $step, 3600);
-
+        Cache::put($this->getCacheKey(), $step, 3600);
     }
 
     private function getCacheKey(): string
     {
-        return 'update_for_user_' . auth()->id();
+        return 'backup_for_user_' . auth()->id();
     }
 
-    private function getUpdateProgressBar($step): float
+    private function getUpdateProgressBar(string $step): float
     {
-        $currentIndex = array_search($step, $this->steps);
+        $currentIndex = array_search($step, $this->steps, true);
         $totalSteps = count($this->steps);
         $percentage = ($currentIndex / ($totalSteps - 1)) * 100;
+
         return round($percentage, 2);
     }
 
+    private function getTempPath(string $path = ''): string
+    {
+        return storage_path('app/tmp' . ($path ? DIRECTORY_SEPARATOR . $path : ''));
+    }
+
+    /* ==============================================================================================*/
+    /*                                 Steps                                                         */
+    /* ==============================================================================================*/
+
+    /**
+     * مرحله ۱: آماده‌سازی اولیه
+     */
     private function stepStartUpdate(): array
     {
-        //TODO::if backup not exists (notify user to make a backup)
-        Setting::set("maintenance_mode", 'on');
-        $nextStep = $this->steps[1];
+        // اگر پوشه tmp موجود نبود، ایجادش کن
+        if (!is_dir($this->getTempPath())) {
+            mkdir($this->getTempPath(), 0755, true);
+        }
+
+        Setting::set('backup_running', true);
+
+        // گام بعد
+        $nextStep = 'check_requirements';
         $this->setCurrentStep($nextStep);
 
         return [
             'success' => true,
-            'message' => 'در حال فعال‌کردن حالت ‌به‌روزرسانی سایت...',
-            'step' => $this->steps[0],
+            'message' => 'در حال آماده‌سازی برای ایجاد فایل پشتیبان...',
+            'step' => 'start',
             'next_step' => $nextStep,
         ];
     }
 
-    private function stepCheckVersionUpdate(): array
+    /**
+     * مرحله ۲: بررسی پیش‌نیازها
+     */
+    private function stepCheckRequirements(): array
     {
-        sleep(3);
-        $lastVersion = '3.0.0';
-        $currentVersion = '2.0.0';
+        $isMaintenanceMode = Setting::get('maintenance_mode', false);
 
-        if ($lastVersion == $currentVersion) {
-            Setting::set("maintenance_mode", 'off');
+
+        $fileSetting = Setting::get('backup_file_setting', ['storage' => 'local', 'type' => 'all']);
+
+        if ($isMaintenanceMode) {
+            Setting::set('backup_running', false);
+
             return [
                 'success' => false,
-                'message' => 'خطا: شما قبلا آخرین نسخه سایت را نصب کرده‌اید.',
-                'step' => $this->steps[1],
+                'message' => 'خطا: سیستم در حالت به‌روزرسانی است. بعداً تلاش کنید.',
+                'step' => 'check_requirements',
                 'next_step' => null,
             ];
         }
 
-        $nextStep = $this->steps[2];
+        $nextStep = $fileSetting['type'] === 'files' ? 'zipping_files' : 'dumping_database';
+        $nextStepMessage = $fileSetting['type'] === 'files'
+            ? 'در حال فشرده‌سازی فایل‌ها...'
+            : 'در حال پشتیبان‌گیری از دیتابیس...';
+
         $this->setCurrentStep($nextStep);
+
         return [
             'success' => true,
-            'message' => 'در حال بررسی نسخه فعلی سایت...',
-            'step' => $this->steps[1],
+            'message' => $nextStepMessage,
+            'step' => 'check_requirements',
             'next_step' => $nextStep,
         ];
     }
 
-    private function stepDownloadUpdate(): array
+    /**
+     * مرحله ۳: گرفتن Dump دیتابیس MySQL با spatie/db-dumper
+     */
+    private function stepDumpingDatabase(): array
     {
-        $fileUrl = 'http://localhost/update/update.zip';
-        $destinationPath = storage_path('app/updates');
-        $fileName = 'update.zip';
-
+        $dumpPath = $this->getTempPath('dump.sql');
+        $dbConfig = config('database.connections.mysql');
 
         try {
+            MySql::create()
+                ->setDbName($dbConfig['database'])
+                ->setUserName($dbConfig['username'])
+                ->setPassword($dbConfig['password'])
+                ->setHost($dbConfig['host'])
+                ->setPort($dbConfig['port'] ?? 3306)
+                ->dumpToFile($dumpPath);
 
-            if (!File::exists($destinationPath)) {
-                File::makeDirectory($destinationPath, 0755, true);
-            }
 
-
-            Http::timeout(300)->sink("{$destinationPath}/{$fileName}")->get($fileUrl);
-
-            $nextStep = $this->steps[3];
+            $nextStep = 'zipping_files';
             $this->setCurrentStep($nextStep);
 
             return [
                 'success' => true,
-                'message' => 'در حال دانلود فایل به‌روزرسانی...',
-                'step' => $this->steps[2],
+                'message' => 'در حال فشرده‌سازی فایل‌ها...',
+                'step' => 'dumping_database',
                 'next_step' => $nextStep,
             ];
+        } catch (\Throwable $e) {
+            Setting::set('backup_running', false);
 
-        } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
             return [
                 'success' => false,
-                'message' => 'خطا در دانلود فایل به‌روزرسانی: ' . $e->getMessage(),
-                'step' => $this->steps[2],
+                'message' => 'خطا در پشتیبان‌گیری از دیتابیس: ' . $e->getMessage(),
+                'step' => 'dumping_database',
                 'next_step' => null,
             ];
-
         }
     }
 
-    private function stepExtractUpdate(): array
+    /**
+     * مرحله ۴: فشرده‌سازی با ZipArchive
+     */
+    private function stepZippingFiles(): array
     {
-        $zipPath = storage_path('app/updates/update.zip');        // مسیر فایل زیپ
-        $extractTo = storage_path('app/updates/unzipped');        // محل استخراج
-        $targetPath = base_path();                                // مسیر ریشه پروژه
+        $fileSetting = Setting::get('backup_file_setting', ['storage' => 'local', 'type' => 'all']);
+        $zipName = 'backup-' . now()->format('Y-m-d_H-i-s') . '.zip';
+        $zipPath = $this->getTempPath($zipName);
+
+        $zip = new ZipArchive();
 
         try {
-            if (!File::exists($zipPath)) {
-                return [
-                    'success' => false,
-                    'message' => 'فایل به‌روزرسانی پیدا نشد.',
-                    'step' => $this->steps[3],
-                    'next_step' => null,
-                ];
+            if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                throw new \RuntimeException('قادر به ایجاد فایل زیپ نیست');
             }
 
-            if (!File::exists($extractTo)) {
-                File::makeDirectory($extractTo, 0755, true);
-            }
-
-            $zip = new ZipArchive();
-            if ($zip->open($zipPath) === true) {
-                $zip->extractTo($extractTo);
-                $zip->close();
-            } else {
-                return [
-                    'success' => false,
-                    'message' => 'خطا در باز کردن فایل ZIP.',
-                    'step' => $this->steps[3],
-                    'next_step' => null,
-                ];
-            }
-
-
-            $files = File::allFiles($extractTo);
-            foreach ($files as $file) {
-                $relativePath = str_replace($extractTo . DIRECTORY_SEPARATOR, '', $file->getPathname());
-                $destination = $targetPath . DIRECTORY_SEPARATOR . $relativePath;
-
-                // ساخت مسیر مقصد اگر وجود ندارد
-                $destDir = dirname($destination);
-                if (!File::exists($destDir)) {
-                    File::makeDirectory($destDir, 0755, true);
+            // 1) افزودن dump دیتابیس در صورت لزوم
+            if (in_array($fileSetting['type'], ['all', 'database'])) {
+                $dumpPath = $this->getTempPath('dump.sql');
+                if (file_exists($dumpPath)) {
+                    $zip->addFile($dumpPath, 'database/dump.sql');
                 }
-
-
-                File::copy($file->getPathname(), $destination);
             }
 
-            $nextStep = $this->steps[4];
+            // 2) افزودن فایل‌های پروژه در صورت لزوم (غیر از node_modules و storage)
+            if (in_array($fileSetting['type'], ['all', 'files'])) {
+                $basePath = base_path();
+                $basePathLen = strlen($basePath) + 1; // +1 for trailing slash
+
+                $iterator = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($basePath, \FilesystemIterator::SKIP_DOTS)
+                );
+
+                foreach ($iterator as $fileInfo) {
+                    $filePath = $fileInfo->getPathname();
+
+                    // فیلتر پوشه‌های حذف‌شده
+                    if (str_contains($filePath, DIRECTORY_SEPARATOR . 'node_modules' . DIRECTORY_SEPARATOR) ||
+                        str_contains($filePath, DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR)) {
+                        continue;
+                    }
+
+                    if ($fileInfo->isFile()) {
+                        $localName = substr($filePath, $basePathLen);
+                        $zip->addFile($filePath, 'project/' . $localName);
+                    }
+                }
+            }
+
+            // پایان
+            $zip->close();
+
+            // مسیر کامل فایل زیپ را فعلاً نگه می‌داریم در Cache برای مراحل بعدی
+            Cache::put($this->getCacheKey() . '_zip_path', $zipPath, 3600);
+            Cache::put($this->getCacheKey() . '_zip_name', $zipName, 3600);
+
+            $nextStep = 'save_backup';
             $this->setCurrentStep($nextStep);
 
             return [
                 'success' => true,
-                'message' => 'در حال استخراج فایل به‌روزرسانی...',
-                'step' => $this->steps[3],
+                'message' => 'در حال ذخیره فایل پشتیبان...',
+                'step' => 'zipping_files',
                 'next_step' => $nextStep,
             ];
-        } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+        } catch (\Throwable $e) {
+            $zip->close();
+            Setting::set('backup_running', false);
+
             return [
                 'success' => false,
-                'message' => 'خطا در استخراج فایل‌ها: ' . $e->getMessage(),
-                'step' => $this->steps[3],
+                'message' => 'خطا در فشرده‌سازی فایل‌ها: ' . $e->getMessage(),
+                'step' => 'zipping_files',
                 'next_step' => null,
             ];
         }
     }
 
-    private function stepMigrateUpdate(): array
+    /**
+     * مرحله ۵: ذخیره فایل بکاپ بر روی دیسک انتخابی
+     */
+    private function stepSaveBackupFile(): array
     {
-        try {
-            Artisan::call('migrate', ['--force' => true]);
+        $fileSetting = Setting::get('backup_file_setting', ['storage' => 'local', 'type' => 'all']);
+        $diskName = $fileSetting['storage'] ?? 'local';
 
-            $nextStep = $this->steps[5];
+        $zipPath = Cache::get($this->getCacheKey() . '_zip_path');
+        $zipName = Cache::get($this->getCacheKey() . '_zip_name');
+
+        if (!$zipPath || !file_exists($zipPath)) {
+            Setting::set('backup_running', false);
+
+            return [
+                'success' => false,
+                'message' => 'فایل زیپ یافت نشد!',
+                'step' => 'save_backup',
+                'next_step' => null,
+            ];
+        }
+
+        try {
+            $stream = fopen($zipPath, 'r');
+            $remoteKey = 'backups/' . $zipName;
+
+            // ذخیره در دیسک انتخابی
+            Storage::disk($diskName)->put($remoteKey, $stream);
+            fclose($stream);
+
+            // اگر مقصد لوکال نیست، یک نسخه در لوکال هم نگه داریم برای دسترسی سریع
+            if ($diskName !== 'local') {
+                Storage::disk('local')->putFileAs('backups', $zipPath, $zipName);
+            }
+
+            $nextStep = 'clean';
             $this->setCurrentStep($nextStep);
 
             return [
                 'success' => true,
-                'message' => 'در حال اعمال تغییرات در دیتابیس...',
-                'step' => $this->steps[4],
+                'message' => 'در حال پاکسازی فایل‌های موقت...',
+                'step' => 'save_backup',
                 'next_step' => $nextStep,
             ];
-        } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+        } catch (\Throwable $e) {
+            Setting::set('backup_running', false);
+
             return [
                 'success' => false,
-                'message' => 'خطا در اعمال تغییرات دیتابیس: ' . $e->getMessage(),
-                'step' => $this->steps[4],
+                'message' => 'خطا در ذخیره‌سازی فایل پشتیبان: ' . $e->getMessage(),
+                'step' => 'save_backup',
                 'next_step' => null,
             ];
         }
     }
 
+    /**
+     * مرحله ۶: پاکسازی فایل‌ها و فولدر موقت
+     */
     private function stepCleanUpdate(): array
     {
-        $updateZipPath = storage_path('app/updates/update.zip');
-        $unzippedPath = storage_path('app/updates/unzipped');
-
         try {
-            if (File::exists($updateZipPath)) {
-                File::delete($updateZipPath);
+            // پاک کردن فولدر tmp
+            if (is_dir($this->getTempPath())) {
+                File::deleteDirectory($this->getTempPath());
             }
 
-            if (File::exists($unzippedPath)) {
-                File::deleteDirectory($unzippedPath);
-            }
-
-            $nextStep = $this->steps[6];
+            $nextStep = 'finished';
             $this->setCurrentStep($nextStep);
 
             return [
                 'success' => true,
-                'message' => 'در حال پاک کردن فایل های موقت ...',
-                'step' => $this->steps[5],
+                'message' => 'در حال اتمام فرآیند پشتیبان‌گیری...',
+                'step' => 'clean',
                 'next_step' => $nextStep,
             ];
-        } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+        } catch (\Throwable $e) {
+            Setting::set('backup_running', false);
+
             return [
                 'success' => false,
                 'message' => 'خطا در حذف فایل‌های موقت: ' . $e->getMessage(),
-                'step' => $this->steps[5],
+                'step' => 'clean',
                 'next_step' => null,
             ];
         }
     }
 
+    /**
+     * مرحله ۷: اعلان پایان به کاربر و تنظیم فلگ‌ها
+     */
     private function stepFinishedUpdate(): array
     {
+        // پایان پروسه
+        Setting::set('backup_running', false);
+
+        // ایمیل به کاربر لاگین کرده (اگر ایمیل موجود است)
+        try {
+            $user = auth()->user();
+            if ($user && $user->email) {
+                $zipName = Cache::get($this->getCacheKey() . '_zip_name');
+                // Mail::to($user->email)->send(new BackupFinishedMail($zipName));
+            }
+        } catch (\Throwable $e) {
+            // خطای ایمیل را لاگ می‌کنیم ولی فرآیند را شکست‌خورده اعلام نمی‌کنیم
+            Log::warning('Email send failed after backup: ' . $e->getMessage());
+        }
+
+        // پاکسازی مقادیر کمکی Cache
+        Cache::forget($this->getCacheKey() . '_zip_path');
+        Cache::forget($this->getCacheKey() . '_zip_name');
         Cache::forget($this->getCacheKey());
-        Artisan::call('config:clear');
-        Artisan::call('view:clear');
-        Artisan::call('route:clear');
-        Setting::set('app_version', '3.0.0');
-        Setting::set("maintenance_mode", 'off');
 
         return [
             'success' => true,
-            'message' => 'فرایند به‌روزرسانی به اتمام رسید.',
-            'step' => $this->steps[6],
+            'message' => 'پشتیبان‌گیری با موفقیت انجام شد.',
+            'step' => 'finished',
             'next_step' => null,
         ];
     }
-
 }

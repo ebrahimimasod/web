@@ -178,7 +178,7 @@ class UpdateController extends Controller
     private function stepStartUpdate(): array
     {
         //TODO::if backup not exists (notify user to make a backup)
-        Setting::set("maintenance_mode", 'on');
+        Setting::set("maintenance_mode", true);
         $nextStep = $this->steps[1];
         $this->setCurrentStep($nextStep);
 
@@ -197,7 +197,7 @@ class UpdateController extends Controller
         $currentVersion = '2.0.0';
 
         if ($lastVersion == $currentVersion) {
-            Setting::set("maintenance_mode", 'off');
+            Setting::set("maintenance_mode", false);
             return [
                 'success' => false,
                 'message' => 'خطا: شما قبلا آخرین نسخه سایت را نصب کرده‌اید.',
@@ -243,7 +243,7 @@ class UpdateController extends Controller
             ];
 
         } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+            Setting::set("maintenance_mode", false);
             return [
                 'success' => false,
                 'message' => 'خطا در دانلود فایل به‌روزرسانی: ' . $e->getMessage(),
@@ -313,7 +313,7 @@ class UpdateController extends Controller
                 'next_step' => $nextStep,
             ];
         } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+            Setting::set("maintenance_mode", false);
             return [
                 'success' => false,
                 'message' => 'خطا در استخراج فایل‌ها: ' . $e->getMessage(),
@@ -338,7 +338,7 @@ class UpdateController extends Controller
                 'next_step' => $nextStep,
             ];
         } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+            Setting::set("maintenance_mode", false);
             return [
                 'success' => false,
                 'message' => 'خطا در اعمال تغییرات دیتابیس: ' . $e->getMessage(),
@@ -372,7 +372,7 @@ class UpdateController extends Controller
                 'next_step' => $nextStep,
             ];
         } catch (\Exception $e) {
-            Setting::set("maintenance_mode", 'off');
+            Setting::set("maintenance_mode", false);
             return [
                 'success' => false,
                 'message' => 'خطا در حذف فایل‌های موقت: ' . $e->getMessage(),
@@ -389,7 +389,7 @@ class UpdateController extends Controller
         Artisan::call('view:clear');
         Artisan::call('route:clear');
         Setting::set('app_version', '3.0.0');
-        Setting::set("maintenance_mode", 'off');
+        Setting::set("maintenance_mode", false);
 
         return [
             'success' => true,
