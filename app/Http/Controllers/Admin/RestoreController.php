@@ -403,6 +403,7 @@ class RestoreController
      */
     private function stepRestoreDatabase(): array
     {
+
         if (!$this->cacheGet('has_database')) {
             $this->setCurrentStep('clean');
             return [
