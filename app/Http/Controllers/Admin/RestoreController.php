@@ -61,12 +61,12 @@ class RestoreController
                 case 'unzip_backup':
                     $result = $this->stepUnzipBackup();
                     break;
-                case 'backup_files':
-                    $result = $this->stepBackupFiles();
-                    break;
-                case 'backup_database':
-                    $result = $this->stepBackupDatabase();
-                    break;
+//                case 'backup_files':
+//                    $result = $this->stepBackupFiles();
+//                    break;
+//                case 'backup_database':
+//                    $result = $this->stepBackupDatabase();
+//                    break;
                 case 'restore_files':
                     $result = $this->stepRestoreFiles();
                     break;
@@ -150,11 +150,7 @@ class RestoreController
         return $this->cacheGet('backup_file_path');
     }
 
-    /**
-     * بازگردانى همه‌چیز به حالت قبل از شروع ری‌استور
-     *
-     * @param string $failedStep مرحله‌ای که در آن خطا رخ داد
-     */
+
     private function afterRestore(): void
     {
         try {
@@ -321,11 +317,11 @@ class RestoreController
 
         // تعیین مرحله بعدى بر اساس وجود فولدرها
         if ($hasFiles) {
-            $next = 'backup_files';
-            $msg = 'در حال تهیه نسخهٔ پشتیبان از فایل‌ها…';
+            $next = 'restore_files';
+            $msg = 'در حال بازگردانى فایل‌ها…';
         } elseif ($hasDatabase) {
-            $next = 'backup_database';
-            $msg = 'در حال تهیه نسخهٔ پشتیبان از دیتابیس…';
+            $next = 'restore_database';
+            $msg = 'در حال بازگردانى دیتابیس…';
         } else {
             throw new Exception('در فایل پشتیبان هیچ‌کدام از فولدرهاى files یا database یافت نشد.');
         }
