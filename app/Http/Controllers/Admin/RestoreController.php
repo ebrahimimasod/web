@@ -82,7 +82,7 @@ class RestoreController
             }
         } catch (Exception $e) {
             Log::error('[Restore] ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-            $this->rollbackRestore($currentStep);
+            $this->afterRestore();
             $result = [
                 'success' => false,
                 'message' => 'خطا: ' . $e->getMessage(),
@@ -155,37 +155,21 @@ class RestoreController
      *
      * @param string $failedStep مرحله‌ای که در آن خطا رخ داد
      */
-    private function rollbackRestore(string $failedStep): void
+    private function afterRestore(): void
     {
         try {
-            /* ───────────── 1) برگرداندن فایل‌ها ───────────── */
-            if (in_array($failedStep, ['restore_files', 'restore_database', 'clean', 'finished'], true)) {
-                $rollbackDir = $this->getTempPath('rollback_files');
-                if (File::isDirectory($rollbackDir)) {
-                    // اول سطح دسترسی‌ها را مثل قبل ست می‌کنیم
-                    File::copyDirectory($rollbackDir, base_path());
-                }
-            }
 
-            /* ───────────── 2) برگرداندن دیتابیس ───────────── */
-            if (in_array($failedStep, ['restore_database', 'clean', 'finished'], true)) {
-                $rollbackSql = $this->getTempPath('rollback_db.sql');
-                if (File::exists($rollbackSql)) {
-                    $this->importSqlDump($rollbackSql);  // متد کمکی جدید
-                }
-            }
-        } catch (\Throwable $ex) {
-            Log::critical('[Restore][Rollback] ' . $ex->getMessage());
-            // اگر حتی رول‌بک هم خطا داد، فقط لاگ می‌کنیم و ادامه می‌دهیم
-        } finally {
-            /* ───────────── 3) تمیزکاری نهایی ───────────── */
-            Setting::set('maintenance_mode', false);
             File::deleteDirectory($this->getTempPath());
             $this->cacheDelete('tmp_dir');
             $this->cacheDelete('has_files');
             $this->cacheDelete('has_database');
             $this->cacheDelete('backup_file_path');
             Cache::forget($this->getCacheKey());
+
+        } catch (\Throwable $ex) {
+            Log::critical('[AfterRestore] ' . $ex->getMessage());
+        } finally {
+            Setting::set('maintenance_mode', false);
         }
     }
 
@@ -555,8 +539,7 @@ class RestoreController
      */
     private function stepFinishedRestore(): array
     {
-        Setting::set('maintenance_mode', false);
-        Cache::forget($this->getCacheKey());
+        $this->afterRestore();
 
         return [
             'success' => true,
