@@ -320,68 +320,80 @@ class BackupController
     }
 
     /**
-     * مرحله ۴: فشرده‌سازی با ZipArchive
+     * مرحلهٔ «فشرده‌سازی فایل‌ها» برای بستهٔ پشتیبان
      */
     private function stepZippingFiles(): array
     {
-        $fileSetting = Setting::get('backup_file_setting', ['storage' => 'local', 'type' => 'all']);
-        $zipName     = config('app.name').'-backup-'.now()->format('Y-m-d_H-i-s').'.zip';
-        $zipPath     = $this->getTempPath($zipName);
+        /* ---------- تنظیمات ---------- */
+        $fileSetting = Setting::get('backup_file_setting', [
+            'storage' => 'local',
+            'type'    => 'all',
+        ]);
 
-        // پوشه‌هایی که باید کنار گذاشته شوند (realpath برای یکنواختی)
-        $exclude = array_map(
-            fn ($p) => rtrim(str_replace('\\', '/', realpath($p)), '/'),
-            [
-                base_path('node_modules'),
-                base_path('tests'),
-                base_path('.git'),
-                storage_path('logs'),
-                storage_path('framework/cache'),
-                storage_path('framework/sessions'),
-                storage_path('framework/views'),
-                storage_path('app/private/backups'),
-            ]
-        );
+        $zipName = config('app.name') . '-backup-' . now()->format('Y-m-d_H-i-s') . '.zip';
+        $zipPath = $this->getTempPath($zipName);
 
-        $zip = new ZipArchive();
+        /* ---------- پوشه‌هایی که نباید داخل پشتیبان بیایند ---------- */
+        $rawExclude = [
+            base_path('node_modules'),
+            base_path('tests'),
+            base_path('.git'),
+            storage_path('logs'),
+            storage_path('framework/cache'),
+            storage_path('framework/sessions'),
+            storage_path('framework/views'),
+            storage_path('app/private/backups'),
+        ];
+
+        // استانداردسازی اسلش‌ها + استفاده از realpath فقط در صورت وجود مسیر
+        $exclude = [];
+        foreach ($rawExclude as $p) {
+            $normalized = str_replace('\\', '/', $p);
+            if (file_exists($p)) {
+                $normalized = str_replace('\\', '/', realpath($p));
+            }
+            $exclude[] = rtrim($normalized, '/');
+        }
+
+        /* ---------- ساخت آرشیو ZIP ---------- */
+        $zip = new \ZipArchive();
 
         try {
-            if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
                 throw new \RuntimeException('قادر به ایجاد فایل زیپ نیست');
             }
 
-            /* ---------- 1) dump پایگاه‌داده ---------- */
-            if (in_array($fileSetting['type'], ['all', 'database'])) {
+            /* ---------- 1) افزودن dump پایگاه‌داده (در صورت نیاز) ---------- */
+            if (in_array($fileSetting['type'], ['all', 'database'], true)) {
                 $dumpPath = $this->getTempPath('dump.sql');
                 if (file_exists($dumpPath)) {
                     $zip->addFile($dumpPath, 'database/dump.sql');
                 }
             }
 
-            /* ---------- 2) فایل‌های پروژه ---------- */
-            if (in_array($fileSetting['type'], ['all', 'files'])) {
+            /* ---------- 2) افزودن فایل‌های پروژه (در صورت نیاز) ---------- */
+            if (in_array($fileSetting['type'], ['all', 'files'], true)) {
 
-                $basePath    = rtrim(str_replace('\\', '/', base_path()), '/').'/';
-                $baseLen     = strlen($basePath);
+                $basePath = rtrim(str_replace('\\', '/', base_path()), '/') . '/';
+                $baseLen  = strlen($basePath);
 
                 $dirIterator = new \RecursiveDirectoryIterator(
                     $basePath,
                     \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::FOLLOW_SYMLINKS
                 );
 
-                // فیلتر بازگشتی برای حذف پوشه‌های ناخواسته از همان ابتدا
+                // فیلتر بازگشتی: اگر مسیر جاری در یکی از پوشه‌های exclude باشد، به زیرشاخه‌هایش هم نرو
                 $filter = new \RecursiveCallbackFilterIterator(
                     $dirIterator,
-                    function (\SplFileInfo $fileInfo, $key, $iterator) use ($exclude) {
+                    function (\SplFileInfo $fileInfo) use ($exclude) {
                         $path = str_replace('\\', '/', $fileInfo->getPathname());
 
-                        // اگر خود این مسیر یا هر والدش در exclude باشد => رد شو
                         foreach ($exclude as $ex) {
-                            if (str_starts_with($path, $ex.'/')) {
-                                return false;                 // این مسیر در لیست حذف است
+                            if (strpos($path, $ex . '/') === 0 || $path === $ex) {
+                                return false;   // این مسیر یا والدش در فهرست حذفیات است
                             }
                         }
-                        return true;                        // نگه داریم
+                        return true;            // نگهش دار
                     }
                 );
 
@@ -393,15 +405,17 @@ class BackupController
                     }
 
                     $filePath  = str_replace('\\', '/', $fileInfo->getPathname());
-                    $localName = substr($filePath, $baseLen);  // مسیر نسبی از ریشهٔ پروژه
-                    $zip->addFile($filePath, 'files/'.$localName);
+                    $localName = substr($filePath, $baseLen);          // مسیر نسبی از ریشهٔ پروژه
+                    $zip->addFile($filePath, 'files/' . $localName);   // افزودن به زیپ
                 }
             }
 
+            /* ---------- پایان ---------- */
             $zip->close();
 
-            Cache::put($this->getCacheKey().'_zip_path', $zipPath, 3600);
-            Cache::put($this->getCacheKey().'_zip_name', $zipName, 3600);
+            // نگهداری مسیر آرشیو برای مراحل بعدی
+            Cache::put($this->getCacheKey() . '_zip_path', $zipPath, 3600);
+            Cache::put($this->getCacheKey() . '_zip_name', $zipName, 3600);
 
             $nextStep = 'save_backup';
             $this->setCurrentStep($nextStep);
@@ -412,20 +426,18 @@ class BackupController
                 'step'      => 'zipping_files',
                 'next_step' => $nextStep,
             ];
-
         } catch (\Throwable $e) {
             $zip->close();
             Setting::set('backup_running', false);
 
             return [
                 'success'   => false,
-                'message'   => 'خطا در فشرده‌سازی فایل‌ها: '.$e->getMessage(),
+                'message'   => 'خطا در فشرده‌سازی فایل‌ها: ' . $e->getMessage(),
                 'step'      => 'zipping_files',
                 'next_step' => null,
             ];
         }
     }
-
 
     /**
      * مرحله ۵: ذخیره فایل بکاپ بر روی دیسک انتخابی
