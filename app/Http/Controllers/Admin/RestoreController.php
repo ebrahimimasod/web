@@ -51,7 +51,6 @@ class RestoreController
     {
         $currentStep = $this->getCurrentStep();
 
-        info('currentStep : ' . $currentStep);
         $result = [];
 
         try {
@@ -82,8 +81,8 @@ class RestoreController
                     break;
             }
         } catch (Exception $e) {
-            Setting::set('maintenance_mode', false);
             Log::error('[Restore] ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            $this->rollbackRestore($currentStep);
             $result = [
                 'success' => false,
                 'message' => 'خطا: ' . $e->getMessage(),
@@ -131,6 +130,11 @@ class RestoreController
         return storage_path('app/temp/restore' . ($path ? DIRECTORY_SEPARATOR . $path : ''));
     }
 
+    private function cacheDelete(string $suffix): void
+    {
+        Cache::forget($this->getCacheKey() . '_' . $suffix);
+    }
+
     private function cachePut(string $suffix, mixed $value): void
     {
         Cache::put($this->getCacheKey() . '_' . $suffix, $value, 3600);
@@ -144,6 +148,75 @@ class RestoreController
     private function getBackupFilePath(): string
     {
         return $this->cacheGet('backup_file_path');
+    }
+
+    /**
+     * بازگردانى همه‌چیز به حالت قبل از شروع ری‌استور
+     *
+     * @param string $failedStep مرحله‌ای که در آن خطا رخ داد
+     */
+    private function rollbackRestore(string $failedStep): void
+    {
+        try {
+            /* ───────────── 1) برگرداندن فایل‌ها ───────────── */
+            if (in_array($failedStep, ['restore_files', 'restore_database', 'clean', 'finished'], true)) {
+                $rollbackDir = $this->getTempPath('rollback_files');
+                if (File::isDirectory($rollbackDir)) {
+                    // اول سطح دسترسی‌ها را مثل قبل ست می‌کنیم
+                    File::copyDirectory($rollbackDir, base_path());
+                }
+            }
+
+            /* ───────────── 2) برگرداندن دیتابیس ───────────── */
+            if (in_array($failedStep, ['restore_database', 'clean', 'finished'], true)) {
+                $rollbackSql = $this->getTempPath('rollback_db.sql');
+                if (File::exists($rollbackSql)) {
+                    $this->importSqlDump($rollbackSql);  // متد کمکی جدید
+                }
+            }
+        } catch (\Throwable $ex) {
+            Log::critical('[Restore][Rollback] ' . $ex->getMessage());
+            // اگر حتی رول‌بک هم خطا داد، فقط لاگ می‌کنیم و ادامه می‌دهیم
+        } finally {
+            /* ───────────── 3) تمیزکاری نهایی ───────────── */
+            Setting::set('maintenance_mode', false);
+            File::deleteDirectory($this->getTempPath());
+            $this->cacheDelete('tmp_dir');
+            $this->cacheDelete('has_files');
+            $this->cacheDelete('has_database');
+            $this->cacheDelete('backup_file_path');
+            Cache::forget($this->getCacheKey());
+        }
+    }
+
+    /**
+     * ایمپورت یک فایل dump از نوع .sql
+     */
+    private function importSqlDump(string $file): void
+    {
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+
+        $handle = fopen($file, 'r');
+        $buffer = '';
+        while (!feof($handle)) {
+            $line = fgets($handle);
+            if ($line === false) {
+                break;
+            }
+
+            $trim = trim($line);
+            if ($trim === '' || str_starts_with($trim, '--')) {
+                continue;
+            }
+
+            $buffer .= $line;
+            if (str_ends_with($trim, ';')) {
+                DB::unprepared($buffer);
+                $buffer = '';
+            }
+        }
+        fclose($handle);
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 
 
