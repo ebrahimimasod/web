@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Facades\Setting;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -36,7 +37,21 @@ class BackupController
         $backup_file_setting = app('setting')->get('backup_file_setting');
         $backup_schedule_setting = app('setting')->get('backup_schedule_setting');
         $backup_storage_setting = app('setting')->get('backup_storage_setting');
-        $files = Storage::disk('local')->files('backups');
+        $files = collect(Storage::disk('local')->files('backups'))
+            ->map(function ($path) {
+                return [
+                    'name' => pathinfo($path, PATHINFO_FILENAME),      // فقط نام
+                    'created_at' => Carbon::createFromTimestamp(
+                        Storage::disk('local')->lastModified($path),
+                        config('app.timezone')
+                    )->format('Y-m-d H:i:s'),
+                    'size_kb' => humanSize(Storage::disk('local')->size($path)),
+                    'path' => $path,                                   // برای دانلود یا حذف
+                ];
+            })
+            ->sortByDesc('created_at')   // جدیدها اول
+            ->values()
+            ->toArray();
 
         return Inertia::render('backup/index', [
             'files' => $files,
@@ -112,7 +127,7 @@ class BackupController
 
         switch ($currentStep) {
             case 'start':
-                $result = $this->stepStartUpdate();
+                $result = $this->stepStartBackup();
                 break;
 
             case 'check_requirements':
@@ -145,6 +160,28 @@ class BackupController
 
         return back()->with('back_response', $result);
     }
+
+
+    public function downloadFile(): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filePath = request('filePath');
+        if (!$filePath) abort(404);
+        return Storage::disk('local')->download($filePath);
+    }
+
+
+    public function deleteFile(): RedirectResponse
+    {
+        $filePath = request('filePath');
+        if (!$filePath) abort(404);
+        try {
+            Storage::disk('local')->delete($filePath);
+            return back()->with('success', 'فایل با موفقیت حذف شد');
+        } catch (\Exception $e) {
+            return back()->with('error', 'خطا در حذف فایل: ' . $e->getMessage());
+        }
+    }
+
 
     /* ==============================================================================================*/
     /*                                 Helpers                                                       */
@@ -186,7 +223,7 @@ class BackupController
     /**
      * مرحله ۱: آماده‌سازی اولیه
      */
-    private function stepStartUpdate(): array
+    private function stepStartBackup(): array
     {
         // اگر پوشه tmp موجود نبود، ایجادش کن
         if (!is_dir($this->getTempPath())) {
@@ -288,7 +325,7 @@ class BackupController
     private function stepZippingFiles(): array
     {
         $fileSetting = Setting::get('backup_file_setting', ['storage' => 'local', 'type' => 'all']);
-        $zipName = config("app.name").'-backup-' . now()->format('Y-m-d_H-i-s') . '.zip';
+        $zipName = config("app.name") . '-backup-' . now()->format('Y-m-d_H-i-s') . '.zip';
         $zipPath = $this->getTempPath($zipName);
 
         $zip = new ZipArchive();

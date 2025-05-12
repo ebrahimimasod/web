@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import AppPageTitle from '@/components/AppPageTitle.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import DeleteResource from '@/components/DeleteResource.vue';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { toPersianDate } from '@/lib/utils';
 import SettingDialog from '@/pages/backup/components/SettingDialog.vue';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
-import { PlayIcon, SettingsIcon } from 'lucide-vue-next';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { DownloadIcon, Ellipsis, PlayIcon, RotateCcw, SettingsIcon, Trash } from 'lucide-vue-next';
 import { defineProps, reactive } from 'vue';
 
 const deleteFile = reactive({
@@ -28,6 +31,26 @@ const breadcrumbs: BreadcrumbItem[] = [
 const settingData = reactive({
     dialog: false,
 });
+const restoreData = reactive({
+    filePath: null,
+    dialog: false,
+});
+
+function openDialogForDelete(filePath) {
+    deleteFile.url = route('admin.backup.delete', { filePath });
+    deleteFile.dialog = true;
+}
+
+function openDialogForRestore(filePath){
+    restoreData.dialog = true;
+    restoreData.filePath = filePath;
+}
+
+function onRestore(){
+    router.get(route('admin.backup.restore.page',{filePath:restoreData.filePath}))
+}
+
+
 </script>
 
 <template>
@@ -42,7 +65,7 @@ const settingData = reactive({
             >
                 <template #actions>
                     <div class="flex items-center justify-end">
-                        <Button class="ml-2"  @click="router.visit(route('admin.backup.run'))" >
+                        <Button class="ml-2" @click="router.visit(route('admin.backup.run'))">
                             <PlayIcon />
                             پشتیبان‌گیری
                         </Button>
@@ -58,66 +81,54 @@ const settingData = reactive({
             <Table v-if="files.length">
                 <TableHeader>
                     <TableRow>
-                        <TableHead>نام</TableHead>
-                        <TableHead>وضعیت</TableHead>
-                        <TableHead>تاریخ ثبت نام</TableHead>
+                        <TableHead>نام فایل</TableHead>
+                        <TableHead>حجم فایل</TableHead>
+                        <TableHead>تاریخ ایجاد</TableHead>
                         <TableHead>عملیات</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    <!--                    <TableRow v-for="file in files">-->
-                    <!--                        <TableCell>{{ user.first_name }} {{ user.last_name }}</TableCell>-->
-                    <!--                        <TableCell>{{ user.email }}</TableCell>-->
-                    <!--                        <TableCell>{{ user.phone_number }}</TableCell>-->
-                    <!--                        <TableCell>-->
-
-                    <!--                            <Badge v-if="user.status" variant="secondary">-->
-                    <!--                                فعال-->
-                    <!--                            </Badge>-->
-                    <!--                            <Badge v-else variant="destructive">-->
-                    <!--                                غیرفعال-->
-                    <!--                            </Badge>-->
-
-                    <!--                            <Badge class="mr-1" v-if="user.is_admin" variant="default">-->
-                    <!--                                ادمین-->
-                    <!--                            </Badge>-->
-
-                    <!--                        </TableCell>-->
-                    <!--                        <TableCell>{{ toPersianDate(user.created_at) }}</TableCell>-->
-                    <!--                        <TableCell>-->
-                    <!--                            <DropdownMenu>-->
-                    <!--                                <DropdownMenuTrigger>-->
-                    <!--                                    <Button variant="ghost" size="icon">-->
-                    <!--                                        <Ellipsis class="w-4 h-4"/>-->
-                    <!--                                    </Button>-->
-
-                    <!--                                </DropdownMenuTrigger>-->
-                    <!--                                <DropdownMenuContent>-->
-                    <!--                                    <DropdownMenuItem @click="openDialogForDelete(user.id)" class="cursor-pointer">-->
-                    <!--                                        <Trash class="text-red-500"/>-->
-                    <!--                                        <span class="text-red-500">حذف</span>-->
-                    <!--                                    </DropdownMenuItem>-->
-                    <!--                                    <DropdownMenuSeparator/>-->
-                    <!--                                    <DropdownMenuItem @click="router.visit(route('admin.users.edit',{id:user.id}))" class="cursor-pointer">-->
-                    <!--                                        <UserRoundPen/>-->
-                    <!--                                        <span>ویرایش</span>-->
-                    <!--                                    </DropdownMenuItem >-->
-                    <!--                                    <DropdownMenuSeparator/>-->
-                    <!--                                    <DropdownMenuItem  @click="router.visit(route('admin.users.show',{id:user.id}))"  class="cursor-pointer">-->
-                    <!--                                        <Eye/>-->
-                    <!--                                        <span>نمایش</span>-->
-                    <!--                                    </DropdownMenuItem>-->
-
-                    <!--                                </DropdownMenuContent>-->
-                    <!--                            </DropdownMenu>-->
-                    <!--                        </TableCell>-->
-                    <!--                    </TableRow>-->
+                    <TableRow v-for="file in files" :key="file.name">
+                        <TableCell>{{ file.name }}</TableCell>
+                        <TableCell>{{ file.size_kb }}</TableCell>
+                        <TableCell>{{ toPersianDate(file.created_at) }}</TableCell>
+                        <TableCell>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger>
+                                    <Button variant="ghost" size="icon">
+                                        <Ellipsis class="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuItem class="cursor-pointer" @click="openDialogForDelete(file.path)">
+                                        <Trash class="text-red-500" />
+                                        <span class="text-red-500">حذف</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem class="cursor-pointer" as="a" :href="route('admin.backup.download', { filePath: file.path })">
+                                        <DownloadIcon />
+                                        <span>دانلود</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem class="cursor-pointer" @click="openDialogForRestore(file.path)">
+                                        <RotateCcw class="text-blue-500" />
+                                        <span class="text-blue-500">بازگردانی</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
+                    </TableRow>
                 </TableBody>
             </Table>
 
             <TableEmpty v-else />
 
             <DeleteResource v-model="deleteFile.dialog" label="فایل پشتیبان " :url="deleteFile.url" />
+            <ConfirmDialog
+                @on-confirm="onRestore"
+                v-model="restoreData.dialog"
+                action-label="بله مطمئنم"
+                label="آیا از بازگردانی این فایل پشتیبان مطمئن هستید؟" />
         </div>
 
         <SettingDialog v-model="settingData.dialog" />
