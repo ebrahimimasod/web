@@ -307,9 +307,14 @@ class RestoreController
         $exclude = [
             base_path('node_modules'),
             base_path('vendor'),
-            storage_path('app'),
+            base_path('tests'),
+            base_path('.git'),
+            storage_path('logs'),
+            storage_path('framework/cache'),
+            storage_path('framework/sessions'),
+            storage_path('framework/views'),
+            storage_path('app/private/backups'),
         ];
-
         $this->copyDirectoryFiltered($projectFilesPath, $rollbackDir, $exclude);
 
         $this->setCurrentStep('backup_database');
