@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Facades\Setting;
 use Exception;
-use FilesystemIterator;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -13,9 +13,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
-use RecursiveIteratorIterator;
-use Spatie\DbDumper\Databases\MySql;
-use Symfony\Component\Finder\Iterator\RecursiveDirectoryIterator;
 use ZipArchive;
 
 
@@ -114,7 +111,11 @@ class RestoreController
 
     private function getCacheKey(): string
     {
-        return 'restore_for_user_' . auth()->id();
+        // اگر قبلاً در سشن ذخیره نشده بساز
+        if (!session()->has('restore_process_key')) {
+            session(['restore_process_key' => 'restore_' . Str::uuid()]);
+        }
+        return session('restore_process_key');
     }
 
     private function getUpdateProgressBar(string $step): float
@@ -150,7 +151,6 @@ class RestoreController
         return $this->cacheGet('backup_file_path');
     }
 
-
     private function afterRestore(): void
     {
         try {
@@ -160,86 +160,17 @@ class RestoreController
             $this->cacheDelete('has_files');
             $this->cacheDelete('has_database');
             $this->cacheDelete('backup_file_path');
+            session()->forget('restore_process_key');
             Cache::forget($this->getCacheKey());
 
         } catch (\Throwable $ex) {
             Log::critical('[AfterRestore] ' . $ex->getMessage());
         } finally {
             Setting::set('maintenance_mode', false);
+            Setting::set('backup_running', false);
         }
     }
 
-    /**
-     * ایمپورت یک فایل dump از نوع .sql
-     */
-    private function importSqlDump(string $file): void
-    {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
-        $handle = fopen($file, 'r');
-        $buffer = '';
-        while (!feof($handle)) {
-            $line = fgets($handle);
-            if ($line === false) {
-                break;
-            }
-
-            $trim = trim($line);
-            if ($trim === '' || str_starts_with($trim, '--')) {
-                continue;
-            }
-
-            $buffer .= $line;
-            if (str_ends_with($trim, ';')) {
-                DB::unprepared($buffer);
-                $buffer = '';
-            }
-        }
-        fclose($handle);
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
-    }
-
-
-    /**
-     * کپی دایرکتوری با امکان نادیده گرفتن پوشه‌ها/فایل‌ها
-     *
-     * @param string $source مسیر مبدا
-     * @param string $destination مسیر مقصد
-     * @param string[] $exclude مسیرهای مطلقی که نباید کپی شوند (بدون اسلش پایانی)
-     */
-    private function copyDirectoryFiltered(string $source, string $destination, array $exclude): void
-    {
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-
-        foreach ($iterator as $item) {
-            $path = $item->getPathname();
-
-            // هر آیتمی که با یکی از مسیرهای exclude شروع شود، رد می‌شود
-            foreach ($exclude as $skip) {
-                if (str_starts_with($path, $skip)) {
-                    // اگر دایرکتوری است، فرزندانش را هم رد کن
-                    if ($item->isDir()) {
-                        $iterator->next();
-                    }
-                    continue 2;   // به حلقهٔ بیرونی
-                }
-            }
-
-            // مسیر مقصدِ این آیتم
-            $target = $destination . DIRECTORY_SEPARATOR . substr($path, strlen($source));
-
-            if ($item->isDir()) {
-                File::ensureDirectoryExists($target, $item->getPerms());
-            } else {
-                File::ensureDirectoryExists(dirname($target));
-                File::copy($path, $target);
-                File::chmod($target, $item->getPerms());
-            }
-        }
-    }
 
     /* ==================================================================
      |  Steps implementations
@@ -278,7 +209,7 @@ class RestoreController
         // پوشهٔ tmp را تمیز ایجاد می‌کنیم (اگر قبلاً وجود داشته باشد پاک می‌شود)
         File::deleteDirectory($this->getTempPath());
         File::makeDirectory($this->getTempPath(), 0755, true);
-
+        $this->cachePut('original_user_id', auth()->id());
         $this->setCurrentStep('unzip_backup');
         return [
             'success' => true,
@@ -293,10 +224,14 @@ class RestoreController
      */
     private function stepUnzipBackup(): array
     {
-        $zipPath = $this->getBackupFilePath();                       // مسیر فایل زیپ
-        $extractTo = $this->getTempPath();                           // محل استخراج
+        /* مسیر فایل بکاپ و فولدر موقت استخراج */
+        $zipPath = $this->getBackupFilePath();
+        $extractTo = $this->getTempPath();          // ‎…/storage/app/tmp
+        if (!is_dir($extractTo)) {
+            mkdir($extractTo, 0755, true);
+        }
 
-
+        /* ۱) باز کردن و استخراج ZIP اصلى */
         $zip = new ZipArchive();
         if ($zip->open($zipPath) !== true) {
             throw new Exception('باز کردن فایل پشتیبان ناموفق بود.');
@@ -307,7 +242,17 @@ class RestoreController
         }
         $zip->close();
 
-        // وجود فولدرهاى files و database
+        /* ۲) باز کردن تمام ZIP پارت‌هاى داخلى (…‑part1.zip, …‑part2.zip, …) */
+        foreach (glob($extractTo . '/*.zip') as $partZip) {
+            $inner = new ZipArchive();
+            if ($inner->open($partZip) === true) {
+                $inner->extractTo($extractTo);       // پوشه‌هاى files/ و database/ را ادغام مى‌کند
+                $inner->close();
+            }
+            @unlink($partZip);                       // حذف فایل پارت بعد از استخراج
+        }
+
+        /* ۳) بررسى وجود پوشه‌هاى files و database */
         $hasFiles = File::isDirectory($extractTo . '/files');
         $hasDatabase = File::isDirectory($extractTo . '/database');
 
@@ -315,112 +260,25 @@ class RestoreController
         $this->cachePut('has_files', $hasFiles);
         $this->cachePut('has_database', $hasDatabase);
 
-        // تعیین مرحله بعدى بر اساس وجود فولدرها
+        /* ۴) تعیین گام بعدى */
         if ($hasFiles) {
-            $next = 'restore_files';
+            $nextStep = 'restore_files';
             $msg = 'در حال بازگردانى فایل‌ها…';
         } elseif ($hasDatabase) {
-            $next = 'restore_database';
+            $nextStep = 'restore_database';
             $msg = 'در حال بازگردانى دیتابیس…';
         } else {
-            throw new Exception('در فایل پشتیبان هیچ‌کدام از فولدرهاى files یا database یافت نشد.');
+            throw new Exception('در فایل پشتیبان هیچ‌کدام از پوشه‌هاى files یا database یافت نشد.');
         }
 
-        $this->setCurrentStep($next);
+        $this->setCurrentStep($nextStep);
+
         return [
             'success' => true,
             'message' => $msg,
             'step' => 'unzip_backup',
-            'next_step' => $next,
+            'next_step' => $nextStep,
         ];
-    }
-
-    /**
-     * STEP 3  ────────────────────────────────────────────────────────────
-     */
-    private function stepBackupFiles(): array
-    {
-        if (!$this->cacheGet('has_files')) {
-            $this->setCurrentStep('backup_database');
-            return [
-                'success' => true,
-                'message' => 'مرحله فایل‌ها رد شد. در حال تهیه نسخهٔ پشتیبان از دیتابیس…',
-                'step' => 'backup_files',
-                'next_step' => 'backup_database',
-            ];
-        }
-
-        $rollbackDir = $this->getTempPath('rollback_files');
-        File::deleteDirectory($rollbackDir);
-        File::makeDirectory($rollbackDir, 0755, true);
-
-        $projectFilesPath = base_path();
-
-        /* مسیرهایی که باید نادیده گرفته شوند */
-        $exclude = [
-            base_path('node_modules'),
-            base_path('vendor'),
-            base_path('tests'),
-            base_path('.git'),
-            storage_path('logs'),
-            storage_path('framework/cache'),
-            storage_path('framework/sessions'),
-            storage_path('framework/views'),
-            storage_path('app/private/backups'),
-        ];
-        $this->copyDirectoryFiltered($projectFilesPath, $rollbackDir, $exclude);
-
-        $this->setCurrentStep('backup_database');
-
-        return [
-            'success' => true,
-            'message' => 'نسخهٔ پشتیبان فایل‌ها ذخیره شد. در حال تهیه نسخهٔ پشتیبان از دیتابیس…',
-            'step' => 'backup_files',
-            'next_step' => 'backup_database',
-        ];
-    }
-
-    /**
-     * STEP 4  ────────────────────────────────────────────────────────────
-     */
-    private function stepBackupDatabase(): array
-    {
-        if (!$this->cacheGet('has_database')) {
-            $this->setCurrentStep('restore_files');
-            return [
-                'success' => true,
-                'message' => 'مرحله دیتابیس رد شد. در حال بازگردانى فایل‌ها…',
-                'step' => 'backup_database',
-                'next_step' => 'restore_files',
-            ];
-        }
-
-        $rollbackPath = $this->getTempPath('rollback_db.sql');
-        $dbConfig = config('database.connections.mysql');
-        try {
-            MySql::create()
-                ->setDbName($dbConfig['database'])
-                ->setUserName($dbConfig['username'])
-                ->setPassword($dbConfig['password'])
-                ->setHost($dbConfig['host'])
-                ->setPort($dbConfig['port'] ?? 3306)
-                ->dumpToFile($rollbackPath);
-
-            $this->setCurrentStep('restore_files');
-            return [
-                'success' => true,
-                'message' => 'نسخهٔ پشتیبان دیتابیس ذخیره شد. در حال بازگردانى فایل‌ها…',
-                'step' => 'backup_database',
-                'next_step' => 'restore_files',
-            ];
-        } catch (\Throwable $e) {
-            return [
-                'success' => false,
-                'message' => 'خطا در پشتیبان‌گیری از دیتابیس: ' . $e->getMessage(),
-                'step' => 'dumping_database',
-                'next_step' => null,
-            ];
-        }
     }
 
     /**
@@ -432,7 +290,7 @@ class RestoreController
             $this->setCurrentStep('restore_database');
             return [
                 'success' => true,
-                'message' => 'مرحله بازگردانى فایل‌ها رد شد. در حال بازگردانى دیتابیس…',
+                'message' => 'در حال بازگردانى دیتابیس…',
                 'step' => 'restore_files',
                 'next_step' => 'restore_database',
             ];
@@ -444,8 +302,18 @@ class RestoreController
         $projectFilesPath = base_path();
 
 
-        File::copyDirectory($unzippedFilesDir, $projectFilesPath);//TODO::آیا فایل های تکراری را هندل می کند؟
+        File::copyDirectory($unzippedFilesDir, $projectFilesPath);
 
+        /* 3) پاک‌کردن کش‌ها و (اختیاری) بازسازی */
+        try {
+            // پاک‌سازی همه cacheها (config, route, view, events,…)
+            Artisan::call('optimize:clear');
+//            Artisan::call('optimize');
+        } catch (\Throwable $e) {
+//            Log::warning('[Restore] Artisan optimize failed: ' . $e->getMessage());
+            throw new Exception('[Restore] Artisan optimize failed: ' . $e->getMessage());
+            // شکست در این مرحله致ی حیاتی نیست، بنابراین ادامه می‌دهیم
+        }
 
         $this->setCurrentStep('restore_database');
         return [
@@ -466,7 +334,7 @@ class RestoreController
             $this->setCurrentStep('clean');
             return [
                 'success' => true,
-                'message' => 'مرحله بازگردانى دیتابیس رد شد. در حال پاکسازى…',
+                'message' => 'در حال پاکسازى فایل‌هاى موقت…',
                 'step' => 'restore_database',
                 'next_step' => 'clean',
             ];
@@ -504,11 +372,18 @@ class RestoreController
         fclose($handle);
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
 
+        if ($userId = $this->cacheGet('original_user_id')) {
+            try {
+                auth()->loginUsingId($userId, remember: false);
+            } catch (\Throwable $e) {
+                Log::warning('[Restore] Relogin failed: ' . $e->getMessage());
+            }
+        }
 
         $this->setCurrentStep('clean');
         return [
             'success' => true,
-            'message' => 'دیتابیس با موفقیت بازگردانى شد. در حال پاکسازى…',
+            'message' => 'دیتابیس با موفقیت بازگردانى شد. در حال پاکسازى فایل‌هاى موقت…',
             'step' => 'restore_database',
             'next_step' => 'clean',
         ];

@@ -7,7 +7,7 @@
     "css": "resources/css/app.css",
     "baseColor": "neutral",
     "cssVariables": true,
-    "prefix": ""
+    "prefix": "web_builder_"
   },
   "aliases": {
     "components": "@/components",
