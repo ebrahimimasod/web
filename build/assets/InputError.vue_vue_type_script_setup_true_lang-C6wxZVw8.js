@@ -1,0 +1,1 @@
+import{d as s,J as t,V as a,o as r,a as o,b as n,t as p}from"./app-DP28Mstu.js";const m={class:"text-sm text-red-600 dark:text-red-500 mt-1"},d=s({__name:"InputError",props:{message:{}},setup(c){return(e,i)=>t((r(),o("div",null,[n("p",m,p(e.message),1)],512)),[[a,e.message]])}});export{d as _};
