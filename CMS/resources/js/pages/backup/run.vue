@@ -1,128 +1,36 @@
 <script setup lang="ts">
-import { onMounted, reactive} from "vue";
+import { Head,router  } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import {type BreadcrumbItem} from '@/types';
-import {Head, router, useForm} from '@inertiajs/vue3';
-import AppPageTitle from "@/components/AppPageTitle.vue";
-import {Progress} from '@/components/ui/progress'
-import {Button} from "@/components/ui/button";
-import Icon from "@/components/Icon.vue";
+import AppPageTitle from '@/components/AppPageTitle.vue';
+import { type BreadcrumbItem } from '@/types';
+import {onMounted,onUnmounted} from "vue"
+import { useIntervalFn } from '@vueuse/core'
+
 
 
 const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'پنل مدیریت',
-        href: '/dashboard',
-    },
-    {
-        title: 'پشتیبان‌گیری',
-        href: '/backup',
-    },
+    { title: 'پنل مدیریت', href: '/dashboard' },
+    { title: 'پشتیبان‌گیری', href: '/backup' },
+    { title: 'فرایند پشتیبان‌گیری', href: '/backup/run' },
 ];
-const updateForm = useForm({});
-const updateProgress = reactive({
-    isUpdating: false,
-    next_step: null,
-    percentage: 0,
-    message: 'در حال بررسی وضعیت سیستم...',
-    isError:false,
-});
 
-function sendUpdateRequest() {
-    updateForm.post(route('admin.backup.run'),
-        {
-            showProgress: false,
-            onStart: () => {
-                updateProgress.isUpdating = true;
-            },
+const { pause, resume, isActive } = useIntervalFn(() => {
+    router.post(route('admin.backup.run'))
+}, 5000)
 
-            onSuccess: (page) => {
-                const {message,step, next_step, success, percentage} = page.props.back_response;
-                updateProgress.message = message;
-                updateProgress.next_step = next_step;
-                updateProgress.percentage = percentage;
-                updateProgress.step = step;
+onUnmounted(pause)
 
-                if(!success){
-                    updateProgress.isError = true;
-                }
-
-
-                /*
-                 message : "در حال پاک سازی فایل های موقت ..."
-                 next_step : "finished"
-                 success : true
-                 */
-
-
-                if (step === 'finished') {
-                    window.location.href = route("admin.backup.list")
-                    return;
-                }
-
-                if (next_step && success) {
-                    sendUpdateRequest();
-                }
-            },
-            onError: (errors) => {
-                updateProgress.message = 'خطایی رخ داد. لطفا دوباره تلاش کنید.';
-                updateProgress.isUpdating = false;
-                updateProgress.isError = true;
-            }
-        });
-}
-
-onMounted(() => {
-    sendUpdateRequest()
-})
 
 
 </script>
 
 <template>
-    <Head title="پشتیبان‌گیری"/>
-
+    <Head title="فرایند پشتیبان‌گیری" />
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
+            <AppPageTitle title="فرایند پشتیبان‌گیری" subtitle="وضعیت پیشرفت فرایند پشتیبان‌گیری را در این صفحه دنبال کنید." />
 
-            <AppPageTitle
-                icon="DatabaseBackup"
-                title="پشتیبان‌گیری"
-                subtitle="در این صفحه می توانید وضعیت پشتیبان‎‌گیری را مشاهده کنید.">
-
-            </AppPageTitle>
-
-
-            <div class="mt-4">
-                <Progress :is-error="updateProgress.isError"  :model-value="updateProgress.percentage"/>
-                <div class="flex items-center justify-center mt-2">
-                    <svg  v-if="!updateProgress.isError" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
-                        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
-                           stroke-width="2">
-                            <path stroke-dasharray="16" stroke-dashoffset="16" d="M12 3c4.97 0 9 4.03 9 9">
-                                <animate fill="freeze" attributeName="stroke-dashoffset" dur="0.3s" values="16;0"/>
-                                <animateTransform attributeName="transform" dur="1.5s" repeatCount="indefinite"
-                                                  type="rotate" values="0 12 12;360 12 12"/>
-                            </path>
-                            <path stroke-dasharray="64" stroke-dashoffset="64" stroke-opacity="0.3"
-                                  d="M12 3c4.97 0 9 4.03 9 9c0 4.97 -4.03 9 -9 9c-4.97 0 -9 -4.03 -9 -9c0 -4.97 4.03 -9 9 -9Z">
-                                <animate fill="freeze" attributeName="stroke-dashoffset" dur="1.2s" values="64;0"/>
-                            </path>
-                        </g>
-                    </svg>
-                    <span class="mx-2 text-sm" :class="updateProgress.isError && 'text-red-500'">{{ updateProgress.message }}</span>
-                    <span class="mr-2 text-sm" v-if="!updateProgress.isError">{{ updateProgress.percentage }}%</span>
-                </div>
-                <div v-if="updateProgress.isError" class="flex items-center justify-center mt-4">
-                    <Button variant="outline" @click="router.visit(route('admin.backup.list'))">
-                        <Icon name="chevronRight" />
-                        بازگشت به صفحه قبل
-                    </Button>
-                </div>
-            </div>
-
-
+            <div class="mx-auto mt-6 max-w-xl text-center"></div>
         </div>
     </AppLayout>
-
 </template>

@@ -128,7 +128,7 @@ class RestoreController
 
     private function getTempPath(string $path = ''): string
     {
-        return storage_path('app/temp/restore' . ($path ? DIRECTORY_SEPARATOR . $path : ''));
+        return storage_path('app/tmp' . ($path ? DIRECTORY_SEPARATOR . $path : ''));
     }
 
     private function cacheDelete(string $suffix): void
@@ -299,10 +299,11 @@ class RestoreController
         $tmpDir = $this->cacheGet('tmp_dir');
         $unzippedFilesDir = $tmpDir . '/files';
 
-        $projectFilesPath = base_path();
+        $projectRoot = realpath(base_path('..')) ?: base_path();
+        $projectRoot = rtrim($projectRoot, DIRECTORY_SEPARATOR);
 
 
-        File::copyDirectory($unzippedFilesDir, $projectFilesPath);
+        File::copyDirectory($unzippedFilesDir, $projectRoot);
 
         /* 3) پاک‌کردن کش‌ها و (اختیاری) بازسازی */
         try {

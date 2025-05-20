@@ -12,7 +12,7 @@ export default defineConfig({
             input: ['resources/js/app.ts'],
             ssr: 'resources/js/ssr.ts',
             refresh: true,
-            publicDirectory: '../Public',   // ← مسیر پوشهٔ Public جدید
+            publicDirectory: '../',   // ← مسیر پوشهٔ Public جدید
             buildDirectory:  'build',       // ← زیرپوشهٔ خروجی کامپایل داخل Public
 
         }),
